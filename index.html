@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Supply Chain Profit Margins and Visualization</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                padding: 20px;
+            }
+            table {
+                border-collapse: collapse;
+                width: 45%;
+                margin: 20px 0;
+                font-size: 16px;
+                text-align: center;
+                float: left;
+            }
+            th,
+            td {
+                border: 1px solid #dddddd;
+                padding: 8px;
+            }
+            th {
+                background-color: #f2f2f2;
+            }
+            caption {
+                font-size: 20px;
+                margin-bottom: 10px;
+                font-weight: bold;
+            }
+            svg {
+                width: 50%;
+                height: 800px;
+                float: left;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Supply Chain Profit Margins and Visualization</h1>
+        <div id="table-container"></div>
+        <svg id="line-chart" viewBox="0 0 1000 800"></svg>
+
+        <script>
+            // Load CSV Data
+            d3.csv("data_sample.csv", d3.autoType).then((data) => {
+                // Calculate ActualCost, SoldPrice, and MarginOfProfit
+                data.forEach((d) => {
+                    d.Date = d3.timeParse("%m/%d/%y")(d.date);
+                    d.ActualCost =
+                        d.RawMaterial + d.Workmanship + d.StorageCost;
+                    d.SoldPrice = (d.EstimatedCost * 1.1).toFixed(2);
+                    d.MarginOfProfit = (d.SoldPrice - d.ActualCost).toFixed(2);
+                });
+
+                // Create Table
+                createTable(data);
+
+                // Create Line Chart
+                createLineChart(data);
+            });
+
+            // Function to Create Table
+            function createTable(data) {
+                const table = d3.select("#table-container").append("table");
+
+                // Add caption
+                table.append("caption").text("Supply Chain Profit Margins");
+
+                // Add header row
+                const headers = [
+                    "Date",
+                    "EstimatedCost",
+                    "RawMaterial",
+                    "Workmanship",
+                    "StorageCost",
+                    "ActualCost",
+                    "SoldPrice",
+                    "MarginOfProfit",
+                ];
+                table
+                    .append("thead")
+                    .append("tr")
+                    .selectAll("th")
+                    .data(headers)
+                    .enter()
+                    .append("th")
+                    .text((d) => d);
+
+                // Add data rows
+                const rows = table
+                    .append("tbody")
+                    .selectAll("tr")
+                    .data(data)
+                    .enter()
+                    .append("tr");
+
+                rows.selectAll("td")
+                    .data((d) =>
+                        headers.map((key) =>
+                            key === "Date"
+                                ? d3.timeFormat("%m/%d/%y")(d.Date)
+                                : d[key],
+                        ),
+                    )
+                    .enter()
+                    .append("td")
+                    .text((d) => d);
+            }
+
+            // Function to Create Line Chart
+            function createLineChart(data) {
+                const margin = { top: 50, right: 50, bottom: 100, left: 100 };
+                const width = 1000 - margin.left - margin.right;
+                const height = 800 - margin.top - margin.bottom;
+
+                const svg = d3
+                    .select("#line-chart")
+                    .append("g")
+                    .attr(
+                        "transform",
+                        `translate(${margin.left},${margin.top})`,
+                    );
+
+                // Scales
+                const xScale = d3
+                    .scaleTime()
+                    .domain(d3.extent(data, (d) => d.Date))
+                    .range([0, width]);
+
+                const yScale = d3
+                    .scaleLinear()
+                    .domain([
+                        d3.min(data, (d) =>
+                            Math.min(
+                                parseFloat(d.EstimatedCost).toFixed(2),
+                                parseFloat(d.ActualCost).toFixed(2),
+                                parseFloat(d.SoldPrice).toFixed(2),
+                                parseFloat(d.MarginOfProfit).toFixed(2),
+                            ),
+                        ),
+                        d3.max(data, (d) =>
+                            Math.max(
+                                parseFloat(d.EstimatedCost).toFixed(2),
+                                parseFloat(d.ActualCost).toFixed(2),
+                                parseFloat(d.SoldPrice).toFixed(2),
+                                parseFloat(d.MarginOfProfit).toFixed(2),
+                            ),
+                        ),
+                    ])
+                    .nice()
+                    .range([height, 0]);
+
+                const color = d3.scaleOrdinal(d3.schemePaired);
+
+                // Axes
+                const xAxis = d3
+                    .axisBottom(xScale)
+                    .tickFormat(d3.timeFormat("%b %Y"));
+                const yAxis = d3.axisLeft(yScale);
+
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(xAxis)
+                    .selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end");
+
+                svg.append("g").call(yAxis);
+
+                // Line Generator
+                const line = d3
+                    .line()
+                    .x((d) => xScale(d.Date))
+                    .y((d) => yScale(d.value));
+
+                // Data Preparation for Multi-line
+                const keys = [
+                    "EstimatedCost",
+                    "ActualCost",
+                    "SoldPrice",
+                    "MarginOfProfit",
+                ];
+                const lineData = keys.map((key) => ({
+                    name: key,
+                    values: data.map((d) => ({ Date: d.Date, value: d[key] })),
+                }));
+
+                // Draw Lines
+                svg.selectAll(".line")
+                    .data(lineData)
+                    .enter()
+                    .append("path")
+                    .attr("class", "line")
+                    .attr("d", (d) => line(d.values))
+                    .style("stroke", (d, i) => color(i))
+                    .style("fill", "none")
+                    .style("stroke-width", 2);
+
+                // Legend
+                const legend = svg
+                    .selectAll(".legend")
+                    .data(lineData)
+                    .enter()
+                    .append("g")
+                    .attr("class", "legend")
+                    .attr("transform", (d, i) => `translate(0,${i * 20})`);
+
+                legend
+                    .append("rect")
+                    .attr("x", width - 20)
+                    .attr("width", 15)
+                    .attr("height", 15)
+                    .style("fill", (d, i) => color(i));
+
+                legend
+                    .append("text")
+                    .attr("x", width - 25)
+                    .attr("y", 12)
+                    .style("text-anchor", "end")
+                    .text((d) => d.name);
+            }
+        </script>
+    </body>
+</html>
